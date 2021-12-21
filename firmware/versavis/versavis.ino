@@ -103,6 +103,8 @@ void setup() {
   DEBUG_PRINTLN(F("Main: Start setup."));
 
   imu.setup();
+  DEBUG_PRINTLN(F("Main: IMU is setup."));
+
   cam0.setup();
   cam1.setup();
   cam2.setup();

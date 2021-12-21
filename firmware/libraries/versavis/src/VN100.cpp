@@ -50,22 +50,85 @@ VN100::~VN100() {
 
 void VN100::setup() {
   DEBUG_PRINTLN((topic_ + " (VN100.cpp): Setup.").c_str());
-  // Start Serial1 for IMU communication
-  Serial1.begin(921600, SERIAL_8N1);
+  // Start Serial1 for IMU communication ( Serial port 2 of the IMU)
+  // Set baud rate
+  // Serial1.print("$VNWRG,05,921600*58\r\n");    
+
+  // Serial1.begin(921600, SERIAL_8N1);
+  Serial1.begin(115200, SERIAL_8N1);
+
+  Serial1.print("$VNWRG,05,921600*XX\r\n");
+  delay(100);
+
+  while( Serial1.available()){
+      DEBUG_PRINTLN(Serial1.read());
+  }
+  Serial1.end();
+
+  Serial1.begin(921600);
+
   delay(20);
   Serial.setTimeout(2);
 
+  // Output pause command
+  Serial1.print("$VNASY,0*XX\r\n");    
+  delay(20);
+
+  // Stop ASCII message outputs
+  Serial1.print("$VNWRG,06,0*XX\r\n");
+  delay(20);
+
+  // Output binary message : IMU message, accel, angular rate
+  // 75: refers to the binary output register 1
+  // 0 : the automatic serial port. we put 0 so that the data is not sent out automatically, instead, it will be available when polled 
+  // 01: we are interested in the "common register"
+  // 0200: we are querying the "imu" register (bit offset 9): 0b100000000 = 0x200 in hex
+  // Serial1.print("$VNWRG,75,0,2,01,0120*XX\r\n");
+  Serial1.print("$VNWRG,75,0,2,01,0200*XX\r\n");
+
+
+  delay(20);
+
+  // clear receive buffer : every command above has a response that needs to be cleared from the RX buffer
+  byte answer[100];
+  Serial1.readBytes(answer, Serial1.available());
+  delay(20);
+  DEBUG_PRINTLN((char *)answer);
   // Check whether IMU is setup correctly. Configuration is done on VectorNav
   // Control Center software.
   Serial1.print("$VNRRG,00*XX\r\n");
-  delay(20);
+  
+  while (!Serial1.available()){
+   DEBUG_PRINTLN("Waiting");
+   delay(100);
+ }
+   // clear receive buffer: every command above has a response that needs to be cleared from the RX buffer
   byte response[100];
   Serial1.readBytes(response, Serial1.available());
+  DEBUG_PRINTLN((char *)response);
 
-  // Check that "User Tag" is set to 7665727361766973 (HEX for versavis).
+  // Check that "User Tag" is set to 7665727361766973 (HEX for versavis). 
+  // this is arbitrary, but it a way to check that the sensor actually receives the right commands
   if (strcmp((char *)response, "$VNRRG,00,7665727361766973*51\r\n") != 0) {
     error((topic_ + " (VN100.cpp): IMU is not setup correctly.").c_str(), 11);
   }
+  byte response1[100];
+
+  // Write the configuration to non volatile memory
+    Serial1.print("$VNWNV*XX\r\n");
+  // Reset
+    Serial1.print("$VNRST*XX\r\n");
+  
+  while (!Serial1.available()){
+   DEBUG_PRINTLN("Waiting");
+   delay(100);
+ }
+  // clear receive : every command above has an ASCII response that needs to be cleared from the RX buffer
+  Serial1.readBytes(response1, Serial1.available());
+  DEBUG_PRINTLN((char *)response1);
+
+  delay(100);
+
   Imu::setupPublisher();
 }
 
@@ -75,6 +138,7 @@ void VN100::setup() {
 int16_t *VN100::readImuData() {
   clearBuffer();
   Serial1.print("$VNBOM,1*XX\r\n");
+
   const uint64_t local_tic = micros();
   while (Serial1.available() < kMessageLength) {
     if (micros() - local_tic < kImuSyncTimeoutUs / 2) {
@@ -86,6 +150,7 @@ int16_t *VN100::readImuData() {
     }
   }
   size_t bytes = Serial1.readBytes(in_, kMessageLength);
+
   if (bytes != kMessageLength) {
     DEBUG_PRINTLN(topic_ + " (VN100.cpp): Not all data read (timeout?).");
     return nullptr;
@@ -94,6 +159,15 @@ int16_t *VN100::readImuData() {
     DEBUG_PRINTLN(topic_ + " (VN100.cpp): Start byte not detected.");
     return nullptr;
   }
+  
+  // for debugging: check data received (HEX)
+  for (int i =0; i<bytes; i++){
+      DEBUG_PRINTHEX(in_[i]);
+      DEBUG_PRINT(" ");
+  }
+  DEBUG_PRINTLN(" ");
+  
+
   checksum_.b[0] = in_[29];
   checksum_.b[1] = in_[28];
   for (size_t i = 0; i < 4; ++i) {
@@ -111,6 +185,14 @@ int16_t *VN100::readImuData() {
   scaled_sensor_data[4] = a_x_.f * imu_accelerator_sensitivity_;
   scaled_sensor_data[5] = a_y_.f * imu_accelerator_sensitivity_;
   scaled_sensor_data[6] = a_z_.f * imu_accelerator_sensitivity_;
+
+  //For debugging: check data received
+  DEBUG_PRINT("Sensor data: ");
+  for (int i=0; i<8; i++){
+    DEBUG_PRINT(scaled_sensor_data[i]);
+    DEBUG_PRINT(" ");
+  }
+  DEBUG_PRINTLN(" ");
   return (scaled_sensor_data); // Return pointer with data
 }
 
