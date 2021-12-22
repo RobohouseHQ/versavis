@@ -26,8 +26,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// NOTE: Before running this code, you must configure the IMU as
-// defined in the README file.
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "VN100.h"
